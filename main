@@ -1,0 +1,118 @@
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+
+Adafruit_MPU6050 mpu;
+
+// assign pin
+const int MPU_addr=0x68;  
+const int buttonPin = 2; 
+const int buzzerPin = 3;
+
+// inisialisasi state awal
+boolean fall = false; 
+boolean buttonPressed = false;
+boolean trigger1 = false; 
+boolean trigger2 = false; 
+boolean trigger3 = false; 
+
+byte trigger1count = 0; 
+byte trigger2count = 0; 
+byte trigger3count = 0; 
+
+void setup() {
+  Serial.begin(9600);
+
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 sensor!");
+    while (1);
+  }
+
+  pinMode(buttonPin, INPUT);
+  pinMode(buzzerPin, OUTPUT);
+
+  mpu.setAccelerometerRange(MPU6050_RANGE_16_G);
+  mpu.setGyroRange(MPU6050_RANGE_250_DEG);
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+}
+
+void loop() {
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+
+  if (digitalRead(buttonPin) == HIGH) {
+    buttonPressed = true;
+    }
+
+  // perhitungan akselerasi 
+  float A = pow(pow(a.acceleration.x, 2) + pow(a.acceleration.y, 2) + pow(a.acceleration.z, 2), 0.5);
+  Serial.print("Acceleration: ");
+  Serial.println(A);
+
+  // perhitungan perubahan orientasi
+  float G = pow(pow(g.gyro.x, 2) + pow(g.gyro.y, 2) + pow(g.gyro.z, 2), 0.5);
+  Serial.print("Rotation: ");
+  Serial.println(G);
+
+  // memeriksa trigger 1
+  if (A <= 1.2 && trigger2 == false) { // jika akselerasi <= lower threshold
+      trigger1 = true;
+      trigger1count++;
+      Serial.println("TRIGGER 1 ACTIVATED");
+  }
+
+  // timeout trigger 1
+  if (trigger1count > 1) { // memastikan trigger 1 aktif dalam waktu 0,5s
+    trigger1 = false;
+    trigger1count = 0;
+    Serial.println("TRIGGER 1 DECACTIVATED");
+  }
+
+  if (trigger1 == true) {
+    // memeriksa trigger 2
+    if (A >= 18 && G > 5.0) { // jika akselerasi >= upper threshold dan perubahan orientasi >5)
+    trigger2 = true;
+    trigger2count++;
+    trigger1 = false;
+    trigger1count = 0;
+    Serial.println("TRIGGER 2 ACTIVATED");
+    }
+  }
+
+  // timeout trigger 2
+  if (trigger2count > 1) { //memastikan trigger 1 aktif dalam waktu 0,5s
+    trigger2 = false;
+    trigger2count = 0;
+    Serial.println("TRIGGER 2 DECACTIVATED");
+    }
+    
+  if (trigger2 == true){
+    trigger3count++;
+    if (trigger3count >= 10){
+      // memeriksa trigger 3 (akselerasi dan orientasi setelah 5s)
+      if (9.0 < A && A < 11 && 0 < G && G < 0.1) {
+      trigger3 = true;
+      trigger2 = false;
+      trigger2count = 0;
+      Serial.println("TRIGGER 3 ACTIVATED");
+      }else {
+       trigger3 = false;
+        trigger3count = 0;
+        Serial.println("TRIGGER 3 DECACTIVATED");
+      }
+    }
+  }
+  // deteksi jatuh
+  if (trigger3 == true){
+    fall = true;
+    if (fall == true) {
+      Serial.println("FALL DETECTED");
+      digitalWrite(buzzerPin, HIGH); // Buzzer menyala
+      if (buttonPressed == true) {
+        digitalWrite(buzzerPin, LOW); // Deactivate the buzzer
+      }
+    }
+  }
+
+  delay(500); // menampilkan hasil setiap 500 ms (0,5s)
+}
